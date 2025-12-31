@@ -1,0 +1,50 @@
+[
+    {
+        "ad_soyad": "mert",
+        "veli_telefon": "1231232323",
+        "sinif": "12",
+        "at_bilgisi": "selahattin",
+        "ucret_turu": "ucAylik",
+        "odenen_tutar": 1500.0,
+        "ogretmen": "Giriş Yapan Öğretmen",
+        "kayit_zamani": "2025-12-28T14:59:29.472",
+        "tarih": "2025-12-28",
+        "saat": "18:00"
+    },
+    {
+        "ad_soyad": "qwre",
+        "veli_telefon": "1231233232",
+        "sinif": "12",
+        "at_bilgisi": "asd",
+        "ucret_turu": "ucAylik",
+        "odenen_tutar": 1500.0,
+        "ogretmen": "Giriş Yapan Öğretmen",
+        "kayit_zamani": "2025-12-28T21:35:09.551",
+        "tarih": "2025-12-28",
+        "saat": "21:34"
+    },
+    {
+        "ad_soyad": "wesrfgth",
+        "veli_telefon": "123334343",
+        "sinif": "12",
+        "at_bilgisi": "qwer",
+        "ucret_turu": "ucAylik",
+        "odenen_tutar": 1500.0,
+        "ogretmen": "Giriş Yapan Öğretmen",
+        "kayit_zamani": "2025-12-29T10:04:35.798",
+        "tarih": "2025-12-29",
+        "saat": "10:04"
+    },
+    {
+        "ad_soyad": "qwe",
+        "veli_telefon": "0099008978",
+        "sinif": "12",
+        "at_bilgisi": "er",
+        "ucret_turu": "ucAylik",
+        "odenen_tutar": 1500.0,
+        "ogretmen": "Giriş Yapan Öğretmen",
+        "kayit_zamani": "2025-12-29T13:52:50.309",
+        "tarih": "2025-12-29",
+        "saat": "13:52"
+    }
+]
