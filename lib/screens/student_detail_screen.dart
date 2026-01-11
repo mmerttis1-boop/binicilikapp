@@ -3,12 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:intl/intl.dart'; // Para birimi formatlama için eklendi
+import 'package:intl/intl.dart';
 
 class StudentDetailScreen extends StatefulWidget {
-  // Gösterilecek öğrencinin listedeki indeksi (API ID'si)
   final int studentIndex; 
-  // API Base adresi (http://192.168.1.134:5000/api/students/)
   final String apiUrlBase; 
 
   const StudentDetailScreen({
@@ -25,10 +23,8 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
   Map<String, dynamic>? _studentData;
   bool _isLoading = true;
   String _error = '';
-  // Kredi butonunun durumunu kontrol etmek için local değişken
   bool _isCreditUpdating = false; 
 
-  // Para birimi formatlayıcı (Türk Lirası için)
   final NumberFormat _currencyFormat = NumberFormat.currency(
     locale: 'tr_TR', 
     symbol: '₺', 
@@ -41,26 +37,24 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     _fetchDetail();
   }
 
-  // ---------------------------------------------------------------------
-  // VERİ ÇEKME FONKSİYONLARI (GET)
-  // ---------------------------------------------------------------------
+  // --- Veri Çekme (GET) ---
   Future<void> _fetchDetail() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = '';
     });
     
-    // API adresi: http://192.168.1.134:5000/api/students/INDEX
+    // URL Yapılandırması (Render üzerinden)
     final url = Uri.parse('${widget.apiUrlBase}${widget.studentIndex}');
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
-        // Türkçe karakter desteği için decode
         final data = json.decode(utf8.decode(response.bodyBytes)); 
         if (mounted) {
-           setState(() {
+          setState(() {
             _studentData = data as Map<String, dynamic>;
             _isLoading = false;
           });
@@ -68,7 +62,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
       } else {
         if (mounted) {
           setState(() {
-            _error = 'Detay çekilemedi. Hata kodu: ${response.statusCode}';
+            _error = 'Detay çekilemedi. Sunucu hatası: ${response.statusCode}';
             _isLoading = false;
           });
         }
@@ -76,392 +70,208 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Bağlantı hatası: API\'ye erişilemiyor.';
+          _error = 'Bağlantı hatası: İnternet veya sunucu kaynaklı bir sorun oluştu.';
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-           const SnackBar(content: Text('❌ Bağlantı Hatası: Flask sunucusuna erişilemiyor.')),
-        );
       }
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Kredi Düşürme (POST)
-  // ---------------------------------------------------------------------
-
+  // --- Kredi Düşürme (POST) ---
   Future<void> _decreaseCredit() async {
     if (_isCreditUpdating) return; 
 
     final currentCredits = _studentData?['remaining_credits'] ?? 0;
     if (currentCredits <= 0) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('❌ Kredi düşürme başarısız. Kredi zaten 0 ders.')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Kredi zaten 0. Daha fazla düşürülemez.')),
+      );
       return;
     }
 
-    setState(() {
-      _isCreditUpdating = true;
-    });
+    setState(() { _isCreditUpdating = true; });
 
-    // API adresi: http://192.168.1.134:5000/api/students/INDEX/credit_decrease
     final url = Uri.parse('${widget.apiUrlBase}${widget.studentIndex}/credit_decrease');
 
     try {
-      final response = await http.post(url); 
+      final response = await http.post(url).timeout(const Duration(seconds: 20)); 
 
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
         final newCredits = data['new_credits'];
         
-        // Kredi düştükten sonra detayları yeniden çek
-        await _fetchDetail(); 
+        await _fetchDetail(); // Ekranı güncelle
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('✅ Kredi başarıyla $newCredits derse düşürüldü.')),
+            SnackBar(content: Text('✅ Kredi düşürüldü. Kalan: $newCredits ders.')),
           );
-          // Home Screen'e başarılı işlem yapıldığı sinyalini gönder
-          Navigator.pop(context, true); 
+          // Home screen'e yenileme yapması için true döndür ama sayfayı hemen kapatma
         }
       } else {
-        String message = 'Kredi düşürme başarısız!';
-        try {
-            final errorData = json.decode(utf8.decode(response.bodyBytes));
-            message = errorData['message'] ?? errorData['error'] ?? 'Hata kodu: ${response.statusCode}';
-        } catch (_) {
-             message = 'Hata kodu: ${response.statusCode}';
-        }
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ $message')),
-          );
-        }
+        throw Exception('İşlem başarısız oldu.');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Bağlantı hatası: Kredi düşürülemedi. Hata: $e')),
+          const SnackBar(content: Text('❌ İşlem sırasında bir hata oluştu.')),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isCreditUpdating = false;
-        });
-      }
+      if (mounted) setState(() { _isCreditUpdating = false; });
     }
   }
 
-  void _showCreditDecreaseDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('❓ Kredi Düşürme Onayı'),
-          content: const Text('Bu ders yapıldı mı? Öğrencinin kalan ders kredisini 1 azaltmak istediğinizden emin misiniz?'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('İptal', style: TextStyle(color: Colors.grey)),
-              onPressed: () {
-                Navigator.of(context).pop(); 
-              },
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              onPressed: () {
-                Navigator.of(context).pop(); 
-                _decreaseCredit(); 
-              },
-              child: const Text('Krediyi Düşür', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-
-  // ---------------------------------------------------------------------
-  // SİLME FONKSİYONLARI (DELETE)
-  // ---------------------------------------------------------------------
-
+  // --- Silme Fonksiyonu (DELETE) ---
   Future<void> _deleteStudent() async {
     final url = Uri.parse('${widget.apiUrlBase}${widget.studentIndex}');
 
     try {
-        final response = await http.delete(url);
+      final response = await http.delete(url).timeout(const Duration(seconds: 20));
 
-        if (response.statusCode == 200) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('✅ Öğrenci kaydı başarıyla silindi.')),
-              );
-              // Home Screen'e başarılı silme yapıldığı sinyalini gönder
-              Navigator.pop(context, true); 
-            }
-        } else {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('❌ Silme başarısız! Hata kodu: ${response.statusCode}')),
-              );
-            }
-        }
-    } catch (e) {
+      if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('❌ Bağlantı hatası: Öğrenci silinemedi.')),
+            const SnackBar(content: Text('✅ Öğrenci kaydı başarıyla silindi.')),
           );
+          Navigator.pop(context, true); // Ana ekrana dön ve listeyi yenile
         }
-    }
-  }
-  
-  void _showDeleteConfirmationDialog() {
-      showDialog(
-          context: context,
-          builder: (BuildContext context) {
-              return AlertDialog(
-                  title: const Text('⚠️ Kaydı Sil Onayı'),
-                  content: const Text('Bu öğrenci kaydını kesinlikle silmek istiyor musunuz? Bu işlem geri alınamaz.'),
-                  actions: <Widget>[
-                      TextButton(
-                          child: const Text('İptal', style: TextStyle(color: Colors.grey)),
-                          onPressed: () {
-                              Navigator.of(context).pop(); 
-                          },
-                      ),
-                      ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                          onPressed: () {
-                              Navigator.of(context).pop(); 
-                              _deleteStudent(); 
-                          },
-                          child: const Text('Sil', style: TextStyle(color: Colors.white)),
-                      ),
-                  ],
-              );
-          },
-      );
-  }
-
-  // ---------------------------------------------------------------------
-  // WIDGET YARDIMCI FONKSİYONLARI 
-  // ---------------------------------------------------------------------
-  
-  // Flask API'den gelen gün numarasını Türkçe isme çevirir
-  String _getDayName(int dayIndex) {
-    switch (dayIndex) {
-      case 0: return 'Pazar';
-      case 1: return 'Pazartesi';
-      case 2: return 'Salı';
-      case 3: return 'Çarşamba';
-      case 4: return 'Perşembe';
-      case 5: return 'Cuma';
-      case 6: return 'Cumartesi';
-      default: return 'Bilinmiyor';
+      } else {
+        throw Exception();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ Silme işlemi başarısız.')),
+        );
+      }
     }
   }
 
-  Widget _buildDetailRow(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: const Color(0xFF3498db), size: 24),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF95a5a6),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    color: Color(0xFF2c3e50),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+  // --- Onay Dialogları ---
+  void _showCreditDecreaseDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('❓ Kredi Düşürülsün mü?'),
+        content: const Text('Bu dersin yapıldığını onaylıyor musunuz?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () { Navigator.pop(context); _decreaseCredit(); },
+            child: const Text('Evet, Düşür', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------
-  // WIDGET BUILD
-  // ---------------------------------------------------------------------
+  void _showDeleteConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ Kaydı Sil'),
+        content: const Text('Bu işlem geri alınamaz. Emin misiniz?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () { Navigator.pop(context); _deleteStudent(); },
+            child: const Text('Sil', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Yardımcı Metodlar ---
+  String _getDayName(int dayIndex) {
+    const days = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+    if (dayIndex >= 0 && dayIndex < 7) return days[dayIndex];
+    return 'Belirlenmedi';
+  }
+
+  Widget _buildDetailRow(String label, String value, IconData icon) {
+    return ListTile(
+      leading: Icon(icon, color: const Color(0xFF3498db)),
+      title: Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+      subtitle: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // API'den gelen verileri al veya varsayılan değerleri kullan
-    final int remainingCredits = _studentData?['remaining_credits'] ?? 0; 
-    
-    // Tekrarlayan gün numarasını isme çevir
-    final int recurringDayIndex = _studentData?['recurring_day_of_week'] ?? -1;
-    final String nextRecurringDayName = _getDayName(recurringDayIndex);
-
-    final String nextRecurringTime = _studentData?['recurring_time'] ?? 'Bilgi Yok';
-
-    // Ödenen tutarı formatla
-    final String odenenTutar = _studentData?['odenen_tutar'] != null 
-        ? _currencyFormat.format(_studentData!['odenen_tutar'] as num)
-        : _currencyFormat.format(0.0);
-    
-    // Kayıt zamanını sadece tarih olarak göster
+    final int remainingCredits = _studentData?['remaining_credits'] ?? 0;
+    final String odenenTutar = _currencyFormat.format(_studentData?['odenen_tutar'] ?? 0);
     final String kayitZamani = _studentData?['kayit_zamani']?.split('T')[0] ?? 'Bilinmiyor';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Öğrenci Detayı', style: TextStyle(color: Colors.white)),
+        title: const Text('Öğrenci Detayı'),
         backgroundColor: const Color(0xFF3498db),
-        foregroundColor: Colors.white,
         actions: [
-            IconButton(
-                icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                tooltip: 'Kaydı Sil',
-                onPressed: _showDeleteConfirmationDialog,
-            ),
+          IconButton(
+            icon: const Icon(Icons.delete_forever, color: Colors.white),
+            onPressed: _showDeleteConfirmationDialog,
+          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error.isNotEmpty
-              ? Center(
-                  child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Text('Hata: $_error', style: const TextStyle(color: Colors.red))),
-                )
-              : _studentData == null
-                  ? const Center(child: Text('Öğrenci verisi bulunamadı.'))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Card(
-                          elevation: 5,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                // Başlık (Ad Soyad)
-                                Center(
-                                  child: Text(
-                                    _studentData!['ad_soyad'] ?? 'Bilinmeyen Öğrenci',
-                                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF2ecc71)),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                const Divider(height: 30, thickness: 2),
-                                
-                                // TEKRAR EDEN DERS BİLGİSİ
-                                _buildDetailRow(
-                                  'Tekrar Eden Ders (Sonraki)', 
-                                  '$nextRecurringDayName, Saat: $nextRecurringTime', 
-                                  Icons.repeat,
-                                ),
-                                const Divider(height: 10, thickness: 1),
-
-                                // KALAN KREDİ BİLGİSİ
-                                _buildDetailRow(
-                                  'Kalan Ders Kredisi', 
-                                  '$remainingCredits Ders', 
-                                  Icons.card_membership,
-                                ),
-                                const Divider(height: 30, thickness: 2),
-
-                                // KREDİ DÜŞÜRME BUTONU (Sadece kredi > 0 ise göster)
-                                if (remainingCredits > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 10.0),
-                                    child: ElevatedButton.icon(
-                                      icon: _isCreditUpdating 
-                                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                          : const Icon(Icons.remove_circle_outline),
-                                      label: Text(_isCreditUpdating ? 'İşleniyor...' : '1 Ders Kredisini Düşür (Kalan: $remainingCredits)'), // Kalan krediyi göster
-                                      onPressed: _isCreditUpdating ? null : _showCreditDecreaseDialog, // Onay dialogunu çağır
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.orange, 
-                                        foregroundColor: Colors.white,
-                                        minimumSize: const Size(double.infinity, 50), 
-                                      ),
-                                    ),
-                                  )
-                                else 
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 10.0),
-                                    child: Text(
-                                      '⚠️ Kredi Bitti! Yeni paket alınması gerekiyor.',
-                                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16),
-                                    ),
-                                  ),
-                                
-                                const Divider(height: 30, thickness: 2),
-
-                                // MEVCUT DETAY SATIRLARI
-                                _buildDetailRow(
-                                  'Ders Saati (İlk Kayıt)', 
-                                  _studentData!['saat'] ?? 'Yok', 
-                                  Icons.access_time,
-                                ),
-                                _buildDetailRow(
-                                  'Ders Tarihi (İlk Kayıt)', 
-                                  _studentData!['tarih'] ?? 'Yok', 
-                                  Icons.calendar_today,
-                                ),
-                                _buildDetailRow(
-                                  'Paket/Ücret Türü', 
-                                  _studentData!['ucret_turu'] ?? 'Belirtilmemiş', 
-                                  Icons.wallet_giftcard,
-                                ),
-                                _buildDetailRow(
-                                  'Ödenen Tutar', 
-                                  odenenTutar, // Formatlanmış tutar
-                                  Icons.monetization_on,
-                                ),
-                                _buildDetailRow(
-                                  'Veli Telefon', 
-                                  _studentData!['veli_telefon'] ?? 'Yok', 
-                                  Icons.phone,
-                                ),
-                                _buildDetailRow(
-                                  'Sınıfı', 
-                                  _studentData!['sinif'] ?? 'Belirtilmemiş', 
-                                  Icons.school,
-                                ),
-                                _buildDetailRow(
-                                  'At Bilgisi', 
-                                  _studentData!['at_bilgisi'] ?? 'Yok', 
-                                  Icons.sports_kabaddi,
-                                ),
-                                _buildDetailRow(
-                                  'Öğretmen', 
-                                  _studentData!['ogretmen'] ?? 'Bilinmiyor', 
-                                  Icons.person_pin,
-                                ),
-                                _buildDetailRow(
-                                  'Kayıt Zamanı (API)', 
-                                  kayitZamani, // Sadece tarih
-                                  Icons.schedule,
-                                ),
-                              ],
+              ? Center(child: Text(_error))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFf8f9fa),
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+                          ),
+                          child: Text(
+                            _studentData?['ad_soyad'] ?? 'Bilinmeyen',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF2c3e50)),
+                          ),
+                        ),
+                        _buildDetailRow('Kalan Ders Kredisi', '$remainingCredits Ders', Icons.confirmation_number),
+                        _buildDetailRow('Sonraki Ders', '${_getDayName(_studentData?['recurring_day_of_week'] ?? -1)} - ${_studentData?['recurring_time'] ?? 'Yok'}', Icons.repeat),
+                        const Divider(),
+                        if (remainingCredits > 0)
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                minimumSize: const Size(double.infinity, 50),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: _isCreditUpdating ? null : _showCreditDecreaseDialog,
+                              icon: _isCreditUpdating 
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : const Icon(Icons.check_circle_outline, color: Colors.white),
+                              label: Text(_isCreditUpdating ? 'Güncelleniyor...' : 'Dersi Yapıldı İşaretle (-1 Kredi)', style: const TextStyle(color: Colors.white)),
                             ),
                           ),
-                      ),
+                        const Divider(),
+                        _buildDetailRow('Paket Türü', _studentData?['ucret_turu'] ?? '-', Icons.inventory),
+                        _buildDetailRow('Ödenen Toplam', odenenTutar, Icons.payments),
+                        _buildDetailRow('Telefon', _studentData?['veli_telefon'] ?? '-', Icons.phone),
+                        _buildDetailRow('At Bilgisi', _studentData?['at_bilgisi'] ?? '-', Icons.pets),
+                        _buildDetailRow('Öğretmen', _studentData?['ogretmen'] ?? '-', Icons.person),
+                        _buildDetailRow('Kayıt Tarihi', kayitZamani, Icons.date_range),
+                        const SizedBox(height: 20),
+                      ],
                     ),
+                  ),
+                ),
     );
   }
 }
